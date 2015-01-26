@@ -1,0 +1,375 @@
+
+<!DOCTYPE html>
+<style>
+    body {margin :0 0 0 0; padding: 0 0 0 0;}
+    path {
+        fill: #E5F5F9;
+        opacity:0.4;
+        stroke: #2CA25F;
+        stroke-width: 0.5;
+    }
+    #axes {
+        stroke: #BDBDBD;
+        stroke-width: 0.5;
+    }
+    .tile {
+        pointer-events: none;
+        position: absolute;
+        width: 256px;
+        height: 256px;
+    }
+    g {
+        -webkit-transition: all 1s ease-in-out;
+    }
+    .location-pin {
+        position: absolute;
+        cursor: pointer;
+    }
+    .zoomed {
+        opacity: 1;
+    }
+    .zoomed_in, .zoomed_out {
+        opacity: 0;
+    }
+    .info-box {
+        fill:rgb(0,0,255);
+        stroke-width:3;
+        stroke:rgb(0,0,0);
+    }
+    .info-box-closer {
+        fill: white;
+        cursor: pointer;
+    }
+    button {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 5px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+</style>
+<body>
+    <button onclick="addMarkers();">Add sensor marker!</button>
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <script src="tile.js"></script>
+    <script>
+        var sensor_data = [], zoom_cached, location_pin, info_box;
+        var server_url = 'http://dev2.cyberlightning.com:44448/';
+        var width = Math.max(960, window.innerWidth),
+                height = Math.max(500, window.innerHeight), layerstyle = "imagemosaic_texture_aerial";
+
+var lat = 65.0167,
+                    long = 25.4667;
+        var tile = d3.geo.tile()
+                .size([width, height]);
+
+        var projection = d3.geo.mercator()
+                .scale((1 << 20) / 2 / Math.PI)
+                .translate([width / 2, height / 2])
+                .center([long, lat]);
+        
+        var center = projection([long, lat]);
+/*
+        var path = d3.geo.path()
+                .projection(projection);*/
+
+        var zoom = d3.behavior.zoom().center(center)
+                .scale(projection.scale() * 2 * Math.PI)
+                .scaleExtent([1 << 11, 1 << 22])
+                .translate([width - center[0], height - center[1]])
+                .on("zoom", zoomed);
+
+        var svg = d3.select("body").append("svg")
+                .attr("width", width)
+                .attr("height", height).call(zoom);
+        
+        location_pin = svg.selectAll(".location-pin");
+        
+        svg.append("g").attr("class", "zoomed_in");
+        svg.append("g").attr("class", "zoomed_out");
+        svg.append("g").attr("class", "zoomed old");
+        
+        var zoomed_in_scale, zoomed_out_scale;
+        function zoomed() {
+            
+            var tiles = tile
+                    .scale(zoom.scale())
+                    .translate(zoom.translate())
+                    ();
+                    
+            if(zoom_cached) {
+                if(zoom_cached > tiles[0][2]) {
+                    //zoomed out
+                    zoom_cached = tiles[0][2];
+                    svg.selectAll(".zoomed_out").classed({"zoomed": true, "zoomed_out": false });
+                    svg.selectAll(".old").classed({"zoomed": false, "zoomed_out": true, "old": false });
+                    svg.selectAll(".zoomed").classed("old", true);
+                    zoom.scale(zoomed_out_scale);
+                    zoomedIn();
+                    zoomedOut();
+                } else if(zoom_cached < tiles[0][2]) {
+                    //zoomed in
+                    zoom_cached = tiles[0][2];
+                    svg.selectAll(".zoomed_in").classed({"zoomed_in": false, "zoomed": true });
+                    svg.selectAll(".old").classed({"zoomed": false, "zoomed_in": true, "old": false });
+                    svg.selectAll(".zoomed").classed("old", true);
+                    zoom.scale(zoomed_in_scale);
+                    setTimeout(zoomedIn(), 5000);
+                    setTimeout(zoomedOut(), 5000);
+                }
+            } else {
+                zoom_cached = tiles[0][2]; 
+                setTimeout(zoomedIn(), 5000);
+                setTimeout(zoomedOut(), 5000);
+            }
+            //console.log(tiles[0]);
+            
+            projection
+                    .scale(zoom.scale() / 2 / Math.PI)
+                    .translate(zoom.translate());
+            
+            var image = svg.selectAll(".zoomed")
+                    .attr("transform", "scale(" + tiles.scale + ")translate(" + tiles.translate + ")")
+                    .selectAll("image")
+                    .data(tiles, function(d) {
+                        return d;
+                    });
+
+            image.exit()
+                    .remove();
+
+            image.enter().append("image")
+                    .attr("width", 1)
+                    .attr("height", 1)
+                    .attr("x", function(d) {
+                        return d[0];
+                    })
+                    .attr("y", function(d) {
+                        return d[1];
+                    })
+                    .attr("xlink:href", function(d) {
+                        var bbox = projection.invert([this.getBoundingClientRect().left, this.getBoundingClientRect().bottom]).join(',') +
+                                    ',' + projection.invert([this.getBoundingClientRect().right, this.getBoundingClientRect().top]).join(',');
+                        return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=' + layerstyle + '&styles=&bbox=' + bbox + '&width=' + 512 + '&height=' + 512 + '&srs=EPSG:4326&format=image%2Fjpeg';
+
+                    });
+                    
+            //sensor_data = [{type: "bus", sensorIcon: sensorImg, long: sensorLng, lat: sensorLat, projected_coords: projection([sensorLng, sensorLat])}];
+            var markers_data = [];
+            if(sensor_data.length > 0) {
+                sensor_data.forEach(function(s_d, i) {
+                    s_d.projected_coords = projection([s_d.long, s_d.lat]);   
+                    markers_data.push(s_d.projected_coords);
+                    //console.log(svg.selectAll(".location-pin").data());
+                    
+                    if(s_d.info_box_show) {
+                        svg.selectAll("."+s_d.info_box_className) 
+                            .data([s_d.projected_coords])
+                            .attr("x", function(d) {
+                                return d[0]-20;
+                            })
+                            .attr("y", function(d) {
+                                return d[1]-100;
+                            });
+                        svg.selectAll("."+s_d.info_box_closer_className)
+                            .data([s_d.projected_coords])
+                            .attr("x", function(d) {
+                                return d[0]+65;
+                            })
+                            .attr("y", function(d) {
+                                return d[1]-85;
+                            });
+                    } 
+                });
+                
+                svg.selectAll(".location-pin")
+                    .data(markers_data)
+                    //.attr("transform", function(d) {return "translate(" + projection(d) + ")scale(" + projection.scale() + ")"})
+                    .attr("x", function(d) {
+                        return d[0];
+                    })
+                    .attr("y", function(d) {
+                        return d[1];
+                });
+                
+            }
+        }
+        
+        zoomed();
+        
+        function zoomedOut() {
+            zoom.scale(zoom.scale()/2);
+            zoomed_out_scale = zoom.scale();
+            var tiles = tile
+                    .scale(zoom.scale())
+                    .translate(zoom.translate())
+                    ();
+
+            projection
+                    .scale(zoom.scale() / 2 / Math.PI)
+                    .translate(zoom.translate());
+            /*
+            vector
+                    .attr("d", path); */
+            
+            var image = svg.selectAll(".zoomed_out")
+                    .attr("transform", "scale(" + tiles.scale + ")translate(" + tiles.translate + ")")
+                    .selectAll("image")
+                    .data(tiles, function(d) {
+                        return d;
+                    });
+
+            image.exit()
+                    .remove();
+
+            image.enter().append("image")
+                    .attr("width", 1)
+                    .attr("height", 1)
+                    .attr("x", function(d) {
+                        return d[0];
+                    })
+                    .attr("y", function(d) {
+                        return d[1];
+                    })
+                    .attr("xlink:href", function(d) {
+                        var bbox = projection.invert([this.getBoundingClientRect().left, this.getBoundingClientRect().bottom]).join(',') +
+                                    ',' + projection.invert([this.getBoundingClientRect().right, this.getBoundingClientRect().top]).join(',');
+      
+                        return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=' + layerstyle + '&styles=&bbox=' + bbox + '&width=' + 512 + '&height=' + 512 + '&srs=EPSG:4326&format=image%2Fjpeg';
+
+                    });
+                    
+            zoom.scale(zoom.scale()*2);
+            
+        }
+        function zoomedIn() {
+            zoom.scale(zoom.scale()*2);
+            zoomed_in_scale = zoom.scale();
+            var tiles = tile
+                    .scale(zoom.scale())
+                    .translate(zoom.translate())
+                    ();
+
+            projection
+                    .scale(zoom.scale() / 2 / Math.PI)
+                    .translate(zoom.translate());
+            
+            var image = svg.selectAll(".zoomed_in")
+                    .attr("transform", "scale(" + tiles.scale + ")translate(" + tiles.translate + ")")
+                    .selectAll("image")
+                    .data(tiles, function(d) {
+                        return d;
+                    });
+
+            image.exit()
+                    .remove();
+
+            image.enter().append("image")
+                    .attr("width", 1)
+                    .attr("height", 1)
+                    .attr("x", function(d) {
+                        return d[0];
+                    })
+                    .attr("y", function(d) {
+                        return d[1];
+                    })
+                    .attr("xlink:href", function(d) {
+                        var bbox = projection.invert([this.getBoundingClientRect().left, this.getBoundingClientRect().bottom]).join(',') +
+                                    ',' + projection.invert([this.getBoundingClientRect().right, this.getBoundingClientRect().top]).join(',');
+          
+                        return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=' + layerstyle + '&styles=&bbox=' + bbox + '&width=' + 512 + '&height=' + 512 + '&srs=EPSG:4326&format=image%2Fjpeg';
+
+                    });
+            zoom.scale(zoom.scale()/2);
+        }
+        
+        function addMarkers() {
+          
+            var lat = "65.1",
+                long = "25.28",
+                radius = "100000";
+
+
+            var sensor_type = "bus";//ele.id;
+
+                
+
+            if (sensor_type === "bus") {
+                num_of_devices = prompt("Number of results: ");
+                if (num_of_devices !== null) {
+                    d3.json(server_url + "?action=getDevicesByRadiusAndByDeviceType&lat=" + lat + "&lon=" + long + "&radius=" + radius + "&maxResults=" + num_of_devices + "&type=wlanstation", function(error, json) {
+                        if (error)
+                            return alert("Error: Server issue!");
+                        else {
+                            var keys = Object.keys(json);
+                            for (var i = 0; i < keys.length; i++) {
+                                var sensorKey = keys[i];
+                                var sensorName = json[sensorKey].attributes.name;
+                                var sensorLat = json[sensorKey].attributes.gps[0];
+                                var sensorLng = json[sensorKey].attributes.gps[1];
+                                var sensorImg = "location_pin.png";
+                                var temp = i;
+                                sensor_data.push({
+                                    type: "bus", sensorIcon: sensorImg, long: sensorLng, lat: sensorLat, projected_coords: projection([sensorLng, sensorLat]),
+                                    info_box_show: false, info_box_className: null, info_box_closer_className: null
+                                });
+                                
+                                switch (sensor_type) {
+                                    case ('bus'):
+                                        location_pin
+                                            .data([sensor_data[temp].projected_coords])
+                                            .enter().append("image")
+                                            .attr("class", "location-pin bus-icon marker"+temp)
+                                            .on("click", function(d){
+                                                sensor_data[temp].info_box_show = true;
+                                                sensor_data[temp].info_box_className = "i_b_"+temp;
+                                                sensor_data[temp].info_box_closer_className = "i_b_c_"+temp;
+                                                svg.selectAll(".i_b_"+temp)
+                                                    .data([sensor_data[temp].projected_coords])
+                                                    .enter().append("rect")
+                                                    .attr("class", "info-box i_b_"+temp)
+                                                    .attr("x", function(d) {
+                                                        return d[0]-20;
+                                                    })
+                                                    .attr("y", function(d) {
+                                                        return d[1]-100;
+                                                    })
+                                                    .attr("width", 100)
+                                                    .attr("height", 100);
+                                                svg.selectAll(".i_b_c_"+temp)
+                                                    .data([sensor_data[temp].projected_coords])
+                                                    .enter().append("text")
+                                                    .attr("class", "info-box-closer i_b_c_"+temp)
+                                                    .attr("x", function(d) {
+                                                        return d[0]+65;
+                                                    })
+                                                    .attr("y", function(d) {
+                                                        return d[1]-85;
+                                                    })
+                                                    .text("x")
+                                                    .on("click", function(d) {
+                                                        svg.selectAll(".i_b_c_"+temp).remove();
+                                                        svg.selectAll(".i_b_"+temp).remove();
+                                                    })
+                                            }) 
+                                            .attr("xlink:href", sensor_data[temp].sensorIcon)
+                                            //.attr("transform", function(d) {return "translate(" + projection(d) + ")scale(" + projection.scale() + ")"})
+                                            .attr("x", function(d) {
+                                                return d[0];
+                                            })
+                                            .attr("y", function(d) {
+                                                return d[1];
+                                            })
+                                            .attr("width", 40)
+                                            .attr("height", 40);
+                                        break;
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+            return true; //stop event propagation
+        }
+    </script>

@@ -1,0 +1,168 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+
+            body {
+                margin: 0;
+            }
+
+            .map {
+                position: relative;
+                overflow: hidden;
+            }
+
+            .layer {
+                position: absolute;
+            }
+
+            .tile {
+                pointer-events: none;
+                position: absolute;
+                width: 256px;
+                height: 256px;
+            }
+
+            .info {
+                position: absolute;
+                bottom: 10px;
+                left: 10px;
+            }
+
+        </style>
+        <title>
+            Tiles example.
+        </title>
+    </head>
+    <body>
+
+
+        <script src="http://d3js.org/d3.v3.min.js"></script>
+        <script src="http://d3js.org/d3.geo.tile.v0.min.js"></script>
+        <script>
+            var init = true;
+
+            var width = Math.max(960, window.innerWidth),
+                    height = Math.max(500, window.innerHeight),
+                    projection = d3.geo.mercator().scale(1 << 7).translate([width / 2, height / 2]),
+                    path = d3.geo.path().projection(projection);
+
+            var svg = d3.select("body").append("svg")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .call(d3.behavior.zoom()
+                            .translate(projection.translate())
+                            .scale(projection.scale())
+                            .on("zoom", redraw));
+
+            var axes = svg.append("g").attr("id", "axes"),
+                    xAxis = axes.append("line").attr("y2", height),
+                    yAxis = axes.append("line").attr("x2", width);
+
+            var tileg = svg.append('g').attr('id', 'tiles');
+
+            init ? zoomToLLBounds([25.492485, 65.009911], [25.502090, 65.014503]) : redraw();
+
+            function tileUrl(d) {
+                //return 'http://a.tiles.mapbox.com/v3/tmcw.map-hehqnmda/' + d.join('/') + '.png';
+                //var bbox = "25.492485,65.009911,25.502090,65.014503";
+                //var long1 = 25.492485 ,lat1 = 65.009911, long2 = 25.502090, lat2 = 65.014503;
+                //d is a tile, change that to coordinates to fetch data.
+                var bbox = projection.invert([this.getBoundingClientRect().left, this.getBoundingClientRect().bottom]).join(',') +
+                            ',' + projection.invert([this.getBoundingClientRect().right, this.getBoundingClientRect().top]).join(',');
+        
+                return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=imagemosaic_texture_aerial&styles=&bbox=' + bbox + '&width=512&height=512&srs=EPSG:4326&format=image%2Fjpeg';
+
+            }
+            
+            function zoomToLLBounds(nw, se) {
+                var pnw = projection(nw);
+                var pse = projection(se);
+
+                var scale = projection.scale();
+                var translate = projection.translate();
+                var dx = pse[0] - pnw[0];
+                var dy = pse[1] - pnw[1];
+
+                scale = scale * (1 / Math.max(dx / width, dy / height));
+                projection
+                        .translate([width / 2, height / 2])
+                        .scale(scale / 2 / Math.PI);
+
+                // reproject
+                pnw = projection(nw);
+                pse = projection(se);
+                var x = (pnw[0] + pse[0]) / 2;
+                var y = (pnw[1] + pse[1]) / 2;
+                translate = [width - x, height - y];
+
+                projection
+                        .scale(scale)
+                        .translate(translate);
+
+                redraw(scale, translate);
+            }
+
+            function redraw(is, it) {
+                if (d3.event) {
+                    projection
+                            .translate(d3.event.translate)
+                            .scale(d3.event.scale);
+                }
+                var t = projection.translate(),
+                        s =  projection.scale(),
+                        z = Math.max(Math.log(s) / Math.log(2) - 8, 0);
+                rz = Math.floor(z),
+                        ts = 256 * Math.pow(2, z - rz);
+
+                // This is the 0, 0 px of the projection
+                var tile_origin = [s / 2 - t[0], s / 2 - t[1]];
+
+                var tiles = [];
+
+                var cols = d3.range(Math.max(0, Math.floor((tile_origin[0] - width) / ts)),
+                        Math.max(0, Math.ceil((tile_origin[0] + width) / ts)));
+
+                var rows = d3.range(Math.max(0, Math.floor((tile_origin[1] - height) / ts)),
+                        Math.max(0, Math.ceil((tile_origin[1] + height) / ts)));
+
+                cols.forEach(function(x) {
+                    rows.forEach(function(y) {
+                        tiles.push([Math.floor(z), x, y]);
+                    });
+                });
+
+                var tiles = tileg.selectAll('image.tile')
+                        .data(tiles, function(d) {
+                            return d.join(',');
+                        });
+
+                tiles.exit()
+                        .transition()
+                        .duration(250)
+                        .style("opacity", 0.0)
+                        .remove();
+
+
+
+                tiles.enter().append('image')
+                        .attr('class', 'tile');
+
+                tiles.attr({width: ts, height: ts})
+                        .attr('transform', function(d) {
+                            return 'translate(' + [(d[1] * ts) - tile_origin[0], (d[2] * ts) - tile_origin[1]] + ')';
+                        })
+                        .attr('xlink:href', tileUrl);
+
+                xAxis.attr("x1", t[0]).attr("x2", t[0]);
+                yAxis.attr("y1", t[1]).attr("y2", t[1]);
+            }
+
+            redraw();
+
+
+        </script>
+    </body>
+</html>

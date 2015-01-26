@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<!--
+To change this license header, choose License Headers in Project Properties.
+To change this template file, choose Tools | Templates
+and open the template in the editor.
+-->
+<html>
+    <head>
+        <title>TODO supply a title</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+
+            body {
+                margin: 0;
+            }
+
+            .map {
+                position: relative;
+                overflow: hidden;
+            }
+
+            .layer {
+                position: absolute;
+            }
+
+            .tile {
+                pointer-events: none;
+                position: absolute;
+                width: 256px;
+                height: 256px;
+                //background-image: url('loading.gif');
+            }
+
+            .top-layer {
+                z-index: 1000;
+            }
+
+            .location-pin {
+                pointer-events: none;
+                position: absolute;
+                height: 256px;
+                width: 256px;
+                z-index: 9999999;
+            }
+
+            .cursor-info {
+                position: absolute;
+                bottom: 10px;
+                left: 10px;
+                background: rgba(0,0,0,0.4);
+                color: white;
+                border: 1px solid grey;
+                padding: 5px;
+                border-radius: 10px;
+            }
+
+            .tiles-info {
+                position: absolute;
+                height: 400px;
+                width: 300px;
+                color: white;
+                background: rgba(0,0,0,0.7);
+                border: 1px solid lightgrey;
+                padding: 3px;
+                border-radius: 5px;
+                overflow-y: scroll;
+                top: 1px;
+                right: 1px;
+            }
+
+            .user-controls {
+                position: fixed;
+                top: 10px;
+                right: 5px;
+                padding: 5px;
+                background: rgba(255,255,255,0.8);
+                border-radius: 5px;
+                z-index: 1000000;
+            }
+            
+            svg {
+                z-index: 100000;
+            }
+        </style>
+    </head>
+    <body>
+        <script src="http://d3js.org/d3.v3.min.js"></script>
+        <script src="tile.js"></script>
+        <script>
+            var startTime, layerstyle = "terrain_texture_raster";
+            var state = {last_height: null};
+            var server_url = 'http://dev2.cyberlightning.com:44448/',
+                    oulu_bbox = [[25.492485, 65.009911], [25.502090, 65.014503]];
+
+            var width = Math.max(960, window.innerWidth),
+                    height = Math.max(500, window.innerHeight),
+                    prefix = prefixMatch(["webkit", "ms", "Moz", "O"]);
+
+            var tile = d3.geo.tile()
+                    .size([width, height]);
+
+            var projection = d3.geo.mercator();
+
+            var zoom = d3.behavior.zoom()
+                    .scale(1 << 7)
+                    .scaleExtent([1 << 17, 1 << 23])
+                    .translate([width / 2, height / 2])
+                    .on("zoom", zoomed);
+
+            var map = d3.select("body").append("div")
+                    .attr("class", "map")
+                    .style("width", width + "px")
+                    .style("height", height + "px")
+                    .call(zoom)
+                    .on("mousemove", mousemoved);
+
+            var layer = map.append("div")
+                    .attr("class", "layer bottom-layer");
+
+            var top_layer = map.append("div")
+                    .attr("class", "layer top-layer");
+
+            var cursor_info = map.append("div")
+                    .attr("class", "cursor-info");
+            /*
+             var tiles_info = map.append("div")
+             .attr("class", "tiles-info")
+             */
+
+            var svg = map.append("svg")
+                    .attr("width", width)
+                    .attr("height", height)
+                    .call(zoom);
+
+            var axes = svg.append("g").attr("id", "axes"),
+                    xAxis = axes.append("line").attr("y2", height),
+                    yAxis = axes.append("line").attr("x2", width);
+
+            var num_of_devices = null;
+            
+            var controlerClicked = function() {
+                if (d3.event) {
+      projection
+          .translate(d3.event.translate)
+          .scale(d3.event.scale);
+    }
+
+                var type;
+                var lat = "65.1",
+                    long = "25.28",
+                    radius = "100000";
+                        
+                var p = d3.geo.mercator()
+                    .translate([width/2,height/2]);
+                
+                var sensor_type = "bus";//ele.id;
+
+                
+
+                if (sensor_type === "bus") {
+                    num_of_devices = prompt("Number of results: ");
+                    if (num_of_devices !== null) {
+                        d3.json(server_url + "?action=getDevicesByRadiusAndByDeviceType&lat=" + lat + "&lon=" + long + "&radius=" + radius + "&maxResults=" + num_of_devices + "&type=bus", function(error, json) {
+                            if (error)
+                                return alert("Error: Server issue!");
+                            else {
+                                var keys = Object.keys(json);
+                                for (var i = 0; i < keys.length; i++) {
+                                    var sensorKey = keys[i];
+                                    var sensorName = json[sensorKey].attributes.name;
+                                    var sensorLat = json[sensorKey].attributes.gps[0];
+                                    var sensorLng = json[sensorKey].attributes.gps[1];
+                                    var sensorImg = "location_pin.png";
+                                    
+
+                                    switch (sensor_type) {
+                                        case ('bus'):/*
+                                            axes.selectAll(".location-pin")
+                                                    .data([[sensorLat, sensorLng]])
+                                                    .enter().append("image")
+                                                    .attr("class", "location-pin bus-icon")
+                                                    .attr("xlink:href", sensorImg)
+                                                    //.attr("transform", function(d) {return "translate(" + projection(d) + ")scale(" + projection.scale() + ")"})
+                                                    .attr("x", function(d, i) {
+                                                        console.log(d);
+                                                        console.log(p(d));
+                                                        return p(d)[0];
+                                                    })
+                                                    .attr("y", function(d, i) {
+                                                        return p(d)[1];
+                                                    });*/
+                                            map.selectAll(".location-pin")
+                                                    .data([[sensorLat, sensorLng]])
+                                                    .enter().append("img")
+                                                    .attr("class", "locaion-pin bus-icon")
+                                                    .attr("src", sensorImg)
+                                                    .style("position", "absolute")
+                                                    .style("left", function(d) {
+                                                        return projection(d)[0]+"px";
+                                                    })
+                                                    .style("right", function(d) {
+                                                        return projection(d)[1]+"px";
+                                                    });
+                                            break;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+                return true; //stop event propagation
+            };
+
+            function updateMarkes() {
+                var p = d3.geo.mercator()
+                    .center([lat, long])
+                    .translate([width/2,height/2]);
+                
+                var lat = "65.1",
+                    long = "25.28",
+                    radius = "100000";
+                    
+                var sensor_type = "bus";
+                    
+                if(num_of_devices) {
+                    d3.json(server_url + "?action=getDevicesByRadiusAndByDeviceType&lat=" + lat + "&lon=" + long + "&radius=" + radius + "&maxResults=" + num_of_devices + "&type=bus", function(error, json) {
+                            if (error)
+                                return alert("Error: Server issue!");
+                            else {
+                                var keys = Object.keys(json);
+                                for (var i = 0; i < keys.length; i++) {
+                                    var sensorKey = keys[i];
+                                    var sensorName = json[sensorKey].attributes.name;
+                                    var sensorLat = json[sensorKey].attributes.gps[0];
+                                    var sensorLng = json[sensorKey].attributes.gps[1];
+                                    var sensorImg = "location_pin.png";
+                                    
+                                    var projectedCoord = p([sensorLat, sensorLng]);
+
+                                    switch (sensor_type) {
+                                        case ('bus'):
+                                            axes.selectAll(".location-pin")
+                                                    .data([projectedCoord])
+                                                    .enter().append("image")
+                                                    .attr("class", "location-pin bus-icon")
+                                                    .attr("xlink:href", sensorImg)
+                                                    //.attr("transform", function(d) {return "translate(" + projection(d) + ")scale(" + projection.scale() + ")"})
+                                                    .attr("x", function(d, i) {
+                                                        console.log(d);
+                                                        console.log(p(d));
+                                                        return d[0];
+                                                    })
+                                                    .attr("y", function(d, i) {
+                                                        return d[1];
+                                                    });
+                                            break;
+                                    }
+                                }
+                            }
+                        });
+                }
+            }
+
+            function zoomed(is, it) {
+                startTime = new Date().getTime();
+                var s = is || zoom.scale();
+                var t = it || zoom.translate();
+
+                var tiles = tile
+                        .scale(s)
+                        .translate(t)
+                        ();
+                        /*
+                projection
+                        .scale(s / 2 / Math.PI)
+                        .translate(t);*/
+
+                var bbox_height = "64";
+                var bbox_width = "64";
+                /*
+                 if(s < 1 << 18) {
+                 bbox_height = "512";
+                 bbox_width = "512";
+                 }
+                 
+                 
+                 if(s < 1 << 19 && s >= 1 << 18) {
+                 bbox_height = "256";
+                 bbox_width = "256";
+                 }
+                 
+                 if (s < 1 << 20 && s >= 1 << 19 ) {
+                 bbox_height = "128";
+                 bbox_width = "128";
+                 }
+                 
+                 if (s < 1 << 21 && s >= 1 << 20){
+                 bbox_height = "64";
+                 bbox_width = "64";
+                 } 
+                 
+                 if(s < 1 << 22 && s >= 1 << 21) {
+                 bbox_height = "32";
+                 bbox_width = "32";
+                 }
+                 
+                 if(s >= 1 << 22) {
+                 bbox_height = "16";
+                 bbox_width = "16";
+                 }*/
+
+
+                var image = layer
+                        .style(prefix + "transform", matrix3d(tiles.scale, tiles.translate))
+                        .selectAll(".tile")
+                        .data(tiles, function(d) {
+                            return d;
+                        });
+                        
+                image.exit()
+                        .remove();
+
+                image.enter().append("img")
+                        .attr("class", "tile")
+                        .attr("onload", "doneimgloading(this)")
+                        .style("left", function(d) {
+                            return (d[0] * 256) + "px";
+                        })
+                        .style("top", function(d) {
+                            return (d[1] * 256) + "px";
+                        })
+                        .attr("src", function(d) {
+
+
+                            var bbox = projection.invert([this.getBoundingClientRect().left, this.getBoundingClientRect().bottom]).join(',') +
+                                    ',' + projection.invert([this.getBoundingClientRect().right, this.getBoundingClientRect().top]).join(',');
+
+
+                            return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=' + layerstyle + '&styles=&bbox=' + bbox + '&width=' + bbox_width + '&height=' + bbox_height + '&srs=EPSG:4326&format=image%2Fjpeg';
+
+                            //return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=terrain_texture_raster&styles=&bbox='+bbox+'&width='+bbox_width+'&height='+bbox_height+'&srs=EPSG:4326&format=image%2Fjpeg';
+
+                            //return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=imagemosaic_texture_aerial&styles=&bbox=' + bbox + '&width='+bbox_width+'&height='+bbox_height+'&srs=EPSG:4326&format=image%2Fjpeg';
+                        });
+
+                xAxis.attr("x1", projection.translate()[0]).attr("x2", projection.translate()[0]);
+                yAxis.attr("y1", projection.translate()[1]).attr("y2", projection.translate()[1]);
+                setTimeout(draw_top_layer(), 3000);
+                
+                axes.selectAll(".location-pin")
+            }
+
+            function draw_top_layer() {
+                var s = zoom.scale();
+                var t = zoom.translate();
+
+                var tiles = tile
+                        .scale(s)
+                        .translate(t)
+                        ();
+
+                projection
+                        .scale(s / 2 / Math.PI)
+                        .translate(t);
+
+                var bbox_height = "512";
+                var bbox_width = "512";
+
+
+                var image = top_layer
+                        .style(prefix + "transform", matrix3d(tiles.scale, tiles.translate))
+                        .selectAll(".tile")
+                        .data(tiles, function(d) {
+                            return d;
+                        });
+                        
+                image.exit()
+                        .remove();
+
+                image.enter().append("img")
+                        .attr("class", "tile")
+                        .attr("onload", "doneimgloading(this)")
+                        .style("left", function(d) {
+                            return (d[0] * 256) + "px";
+                        })
+                        .style("top", function(d) {
+                            return (d[1] * 256) + "px";
+                        })
+                        .attr("src", function(d) {
+
+
+                            var bbox = projection.invert([this.getBoundingClientRect().left, this.getBoundingClientRect().bottom]).join(',') +
+                                    ',' + projection.invert([this.getBoundingClientRect().right, this.getBoundingClientRect().top]).join(',');
+
+
+                            return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=' + layerstyle + '&styles=&bbox=' + bbox + '&width=' + bbox_width + '&height=' + bbox_height + '&srs=EPSG:4326&format=image%2Fjpeg';
+
+                            //return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=terrain_texture_raster&styles=&bbox='+bbox+'&width='+bbox_width+'&height='+bbox_height+'&srs=EPSG:4326&format=image%2Fjpeg';
+
+                            //return 'http://dev2.cyberlightning.com:8080/geoserver/cyber/wms?service=WMS&version=1.1.0&request=GetMap&layers=imagemosaic_texture_aerial&styles=&bbox=' + bbox + '&width='+bbox_width+'&height='+bbox_height+'&srs=EPSG:4326&format=image%2Fjpeg';
+                        });
+            }
+            ;
+
+
+            function doneimgloading(ele) {
+                var loadtime = new Date().getTime() - startTime;
+                console.log("Grids total time to load: " + loadtime + "mm. zoom: " + zoom.scale());
+            }
+
+            (function zoomToLLBounds(nw, se) {
+                var pnw = projection(nw);
+                var pse = projection(se);
+
+                var scale = zoom.scale();
+                var translate = zoom.translate();
+                var dx = pse[0] - pnw[0];
+                var dy = pse[1] - pnw[1];
+
+                scale = scale * (1 / Math.max(dx / width, dy / height));
+                projection
+                        .translate([width / 2, height / 2])
+                        .scale(scale / 2 / Math.PI);
+
+                // reproject
+                pnw = projection(nw);
+                pse = projection(se);
+                var x = (pnw[0] + pse[0]) / 2;
+                var y = (pnw[1] + pse[1]) / 2;
+                translate = [width - x, height - y];
+
+                zoom
+                        .scale(scale)
+                        .translate(translate);
+
+                zoomed(scale, translate, layerstyle);
+            }(oulu_bbox[0], oulu_bbox[1]));
+
+
+
+
+            function matrix3d(scale, translate) {
+                var k = scale / 256, r = scale % 1 ? Number : Math.round;
+                return "matrix3d(" + [k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, r(translate[0] * scale), r(translate[1] * scale), 0, 1] + ")";
+            }
+
+            function prefixMatch(p) {
+                var i = -1, n = p.length, s = document.body.style;
+                while (++i < n)
+                    if (p[i] + "Transform" in s)
+                        return "-" + p[i].toLowerCase() + "-";
+                return "";
+            }
+
+
+            function mousemoved() {
+                cursor_info.text(formatLocation(projection.invert(d3.mouse(this)), zoom.scale()));
+                //console.log(projection.invert([0,0]).join(',')+','+projection.invert([width, height]).join(','));
+            }
+
+            function formatLocation(p, k) {
+                var format = d3.format("." + Math.floor(Math.log(k) / 2 - 2) + "f");
+                return (p[1] < 0 ? format(-p[1]) + "°S" : format(p[1]) + "°N") + " "
+                        + (p[0] < 0 ? format(-p[0]) + "°W" : format(p[0]) + "°E");
+            }
+
+            function changeLayer(layer) {
+                layerstyle = layer;
+                zoomed();
+                return;
+            }
+
+        </script>
+        <div class="user-controls">
+            <!--
+            <form role="form">
+                <div class="checkbox" id="bus" onclick="controlerClicked(this)">
+                    <label>
+                        <input type="checkbox"> Bus
+                    </label>
+                </div>
+            </form>-->
+            <div class="radio">
+                <label>
+                    <input type="radio" name="optionsRadios"  onclick="changeLayer('terrain_texture_raster')" checked>
+                    terrain_texture_raster
+                </label>
+            </div>
+            <div class="radio">
+                <label>
+                    <input type="radio" name="optionsRadios"  onclick="changeLayer('imagemosaic_texture_aerial')">
+                    imagemosaic_texture_aerial
+                </label>
+            </div>
+        </div>
+    </body>
+</html>
