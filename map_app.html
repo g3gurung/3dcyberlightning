@@ -40,7 +40,7 @@
         fill: white;
         cursor: pointer;
     }
-    button {
+    button, .search-filter {
         position: absolute;
         top: 10px;
         right: 10px;
@@ -48,9 +48,19 @@
         border-radius: 5px;
         cursor: pointer;
     }
+    .search-filter {
+        top: 50px;
+    }
+    .search-filter-btn {
+        position: relative;
+    }
 </style>
 <body>
     <button onclick="addMarkers();">Add sensor marker!</button>
+    <div class="search-filter">
+        
+    </div>
+    <script src="https://autobahn.s3.amazonaws.com/autobahnjs/latest/autobahn.min.jgz"></script>
     <script src="http://d3js.org/d3.v3.min.js"></script>
     <script src="tile.js"></script>
     <script>
@@ -59,9 +69,29 @@
         var width = Math.max(960, window.innerWidth),
                 height = Math.max(500, window.innerHeight), layerstyle = "imagemosaic_texture_aerial";
 
-var lat = 65.0167,
-                    long = 25.4667;
-        var tile = d3.geo.tile()
+var lat = 60.2056,//65.0167,
+                    long = 24.6556;//25.4667;
+                    /*
+var wsSession;
+        var connection = new autobahn.Connection({
+            url: "ws://dev.cyberlightning.com:8092",
+            realm: "default"
+        });
+      
+      
+        connection.onopen = function(session) {
+            //console.log("Websocket Connected")
+            wsSession = session;
+            for (var i=0; i<sensor_data.length; i++) {
+                wsRegisterDevice(sensor_data[i]);
+            }
+        }
+
+        connection.onclose = function(reason, details) {
+            console.log("Websocket connection lost: " + reason);
+        }
+*/
+    var tile = d3.geo.tile()
                 .size([width, height]);
 
         var projection = d3.geo.mercator()
@@ -80,14 +110,15 @@ var lat = 65.0167,
                 .translate([width - center[0], height - center[1]])
                 .on("zoom", zoomed);
 
+                
         var svg = d3.select("body").append("svg")
                 .attr("width", width)
                 .attr("height", height).call(zoom);
         
         location_pin = svg.selectAll(".location-pin");
         
-        svg.append("g").attr("class", "zoomed_in");
-        svg.append("g").attr("class", "zoomed_out");
+        //svg.append("g").attr("class", "zoomed_in");
+        //svg.append("g").attr("class", "zoomed_out");
         svg.append("g").attr("class", "zoomed old");
         
         var zoomed_in_scale, zoomed_out_scale;
@@ -97,7 +128,7 @@ var lat = 65.0167,
                     .scale(zoom.scale())
                     .translate(zoom.translate())
                     ();
-                    
+                    /*
             if(zoom_cached) {
                 if(zoom_cached > tiles[0][2]) {
                     //zoomed out
@@ -122,7 +153,7 @@ var lat = 65.0167,
                 zoom_cached = tiles[0][2]; 
                 setTimeout(zoomedIn(), 5000);
                 setTimeout(zoomedOut(), 5000);
-            }
+            }*/
             //console.log(tiles[0]);
             
             projection
@@ -156,7 +187,7 @@ var lat = 65.0167,
                     });
                     
             //sensor_data = [{type: "bus", sensorIcon: sensorImg, long: sensorLng, lat: sensorLat, projected_coords: projection([sensorLng, sensorLat])}];
-            var markers_data = [];
+            /*var markers_data = [];
             if(sensor_data.length > 0) {
                 sensor_data.forEach(function(s_d, i) {
                     s_d.projected_coords = projection([s_d.long, s_d.lat]);   
@@ -193,7 +224,10 @@ var lat = 65.0167,
                         return d[1];
                 });
                 
-            }
+            }*/
+            filterSearch();
+            
+            updateMarkers();
         }
         
         zoomed();
@@ -241,6 +275,15 @@ var lat = 65.0167,
                     });
                     
             zoom.scale(zoom.scale()*2);
+            /*
+            var w = document.getElementsByTagName('body')[0].getBoundingClientRect().width / 2;
+            var h = document.getElementsByTagName('body')[0].getBoundingClientRect().height / 2;
+            var topCood = projection.invert([-w, -h]);
+            var bottomCood = projection.invert([w, h]);
+            console.log(" ");
+            console.log("zoomedout cood bbox: "+topCood+" and "+bottomCood);
+            console.log("zoomedout radius in meters: "+getRadiusofScreen(projection.invert([-w,0]), projection.invert([0, 0])));
+            console.log("zoomedout center coord: "+projection.invert([0,0]));*/
             
         }
         function zoomedIn() {
@@ -282,27 +325,69 @@ var lat = 65.0167,
 
                     });
             zoom.scale(zoom.scale()/2);
+            /*
+            var w = document.getElementsByTagName('body')[0].getBoundingClientRect().width / 2;
+            var h = document.getElementsByTagName('body')[0].getBoundingClientRect().height / 2;
+            var topCood = projection.invert([-w, -h]);
+            var bottomCood = projection.invert([w, h]);
+            console.log(" ");
+            console.log("zoomedin cood bbox: "+topCood+" and "+bottomCood);
+            console.log("zoomedin radius in meters: "+getRadiusofScreen(projection.invert([-w,0]), projection.invert([0, 0])));
+            console.log("zoomedin center coord: "+projection.invert([0,0]));*/
         }
         
-        function addMarkers() {
-          
-            var lat = "65.1",
-                long = "25.28",
-                radius = "100000";
-
-
-            var sensor_type = "bus";//ele.id;
-
-                
-
-            if (sensor_type === "bus") {
-                num_of_devices = prompt("Number of results: ");
-                if (num_of_devices !== null) {
-                    d3.json(server_url + "?action=getDevicesByRadiusAndByDeviceType&lat=" + lat + "&lon=" + long + "&radius=" + radius + "&maxResults=" + num_of_devices + "&type=wlanstation", function(error, json) {
+        function addMarkers(devicetype) {
+            
+                var num_of_devices = parseInt(prompt("Number of results: "));
+                if (num_of_devices > 0 && devicetype) {
+                    //d3.json(server_url + "?action=getDevicesByRadiusAndByDeviceType&lat=" + lat + "&lon=" + long + "&radius=" + radius + "&maxResults=" + num_of_devices + "&type=wlanstation", function(error, json) {
+                    d3.json("http://dev.cyberlightning.com:8091/devices/search?device_type="+devicetype+"&geocode="+getGeocode()+"&maxresults="+num_of_devices, function(error, json) {    
                         if (error)
                             return alert("Error: Server issue!");
                         else {
-                            var keys = Object.keys(json);
+                            sensor_data.push({
+                               device_type: devicetype,
+                               sensorIcon: devicetype+".png"
+                            });
+                            json.forEach(function(j,i) {
+                               json[i]["projected_coords"] = projection(j.attributes.gps.reverse()); 
+                            });
+                            location_pin
+                                    .data(json)
+                                    .enter().append("image")
+                                    .attr("class", "location-pin")
+                                    .on("click", function(d) {
+                                        svg.selectAll(".info-box").remove();
+                                        var info_box_data = {
+                                            gps: d.attributes.gps,
+                                            projected_coords: projection(d.attributes.gps)
+                                        };
+                                        svg.selectAll(".info-box")
+                                                .data([info_box_data])
+                                                .enter().append("rect")
+                                                .attr("class", "info-box")
+                                                .attr("x", function(d) {
+                                                    return d.projected_coords[0]-20;
+                                                })
+                                                .attr("y", function(d) {
+                                                    return d.projected_coords[1]-100;
+                                                })
+                                                .attr("width", 100)
+                                                .attr("height", 100);
+                                        //alert("uuid: "+d.uuid);
+                                    })
+                                    .attr("x", function(d){
+                                        console.log((d.projected_coords[0]));
+                                        return d.projected_coords[0];
+                                    })
+                                    .attr("y", function(d){
+                                        console.log((d.projected_coords[1]));
+                                        return d.projected_coords[1];
+                                    })
+                                    .attr("xlink:href", "location_pin.png")
+                                    .attr("width", 30)
+                                    .attr("height", 30);
+                         /*   var keys = Object.keys(json);
                             for (var i = 0; i < keys.length; i++) {
                                 var sensorKey = keys[i];
                                 var sensorName = json[sensorKey].attributes.name;
@@ -311,12 +396,12 @@ var lat = 65.0167,
                                 var sensorImg = "location_pin.png";
                                 var temp = i;
                                 sensor_data.push({
-                                    type: "bus", sensorIcon: sensorImg, long: sensorLng, lat: sensorLat, projected_coords: projection([sensorLng, sensorLat]),
-                                    info_box_show: false, info_box_className: null, info_box_closer_className: null
+                                    type: "heatpumpstation", sensorIcon: sensorImg, long: sensorLng, lat: sensorLat, projected_coords: projection([sensorLng, sensorLat]),
+                                    info_box_show: false, info_box_className: null, info_box_closer_className: null, subscription: NaN
                                 });
                                 
                                 switch (sensor_type) {
-                                    case ('bus'):
+                                    case ('heatpumpstation'):
                                         location_pin
                                             .data([sensor_data[temp].projected_coords])
                                             .enter().append("image")
@@ -367,9 +452,120 @@ var lat = 65.0167,
                                 }
                             }
                         }
-                    });
+                    });*/
+                }
+         
+         
+            return true; //stop event propagation
+        });
+        /*
+        function wsRegisterDevice(marker) {
+    
+            function wsOnEvent(args) {
+              var jData, i, j;
+              //console.log("Event:", args[0])
+              jData = JSON.parse(args[0]);
+              try { // GPS not necessarily updated, hence try-catch:
+                marker['lat'] = jData.attributes.gps[0];
+                marker['long'] = jData.attributes.gps[1];
+                zoomed();
+              } catch (err) { }/*
+              for (i=0; i<jData.sensors.length; i++) {
+                for (j=0; j<marker['sensors'].length; j++) {
+                  //console.log("Comparing '"+marker['sensors'][j].name+"' to '"+jData.sensors[i].name+"'");
+                  if (marker['sensors'][j].name === jData.sensors[i].name) {
+                    marker['sensors'][j].value = jData.sensors[i].value.values;
+                    if (marker['infowindow'] == 1) infoWindow.setContent(buildContentString(marker));
+                    //console.log("Updating device "+marker['uuid']+" sensor '"+marker['sensors'][j].name+"' to value="+jData.sensors[i].value.values);
+                    break;
+                  }
+                }
+                //console.log(marker['uuid']+": '"+jData.sensors[i].name+"': value="+jData.sensors[i].value.values)
+              }*/
+       /* }
+        if (wsSession != undefined) {
+          wsSession.subscribe("device."+marker['uuid'], wsOnEvent).then(
+            function (subscription) {
+              marker['subscription'] = subscription;
+              //console.log("Subscribed with subscription ID " + subscription.id);
+          });
+        } else marker['subscription'] = undefined;
+  }*/
+
                 }
             }
-            return true; //stop event propagation
+            
+function updateMarkers() {
+    var markers_data = svg.selectAll(".location-pin").data();
+    markers_data.forEach(function(m_d, i){
+        markers_data[i].projected_coords = projection(m_d.attributes.gps);
+        console.log("markers coords: "+markers_data[i].projected_coords);
+    });
+    
+    svg.selectAll(".location-pin").data(markers_data)
+        .attr("x", function(d){
+            return d.projected_coords[0];
+        })
+        .attr("y", function(d){
+            return d.projected_coords[1];
+        });
+    var info_box_data = svg.selectAll(".info-box").data()[0];
+    if(info_box_data) {
+        info_box_data.projected_coords = projection(info_box_data.gps);
+    
+        svg.selectAll(".info-box")
+            .data([info_box_data])
+            .attr("x", function(d) {
+                return d.projected_coords[0]-20;
+            })
+            .attr("y", function(d) {
+                return d.projected_coords[1]-100;
+            });
+    }
+}
+
+function getRadiusofScreen(cood1, cood2) {
+    var earthRadius = 6371000; //in meters
+    var dLat = (cood2[1]-cood1[1])*(Math.PI/180);
+    var dLon = (cood2[0]-cood1[0])*(Math.PI/180);
+    var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(cood1[1]*(Math.PI/180)) * Math.cos(cood2[1]*(Math.PI/180)) * Math.sin(dLon/2) * Math.sin(dLon/2); 
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    return earthRadius * c;
+}
+
+function filterSearch() {
+   
+    d3.xhr("http://dev.cyberlightning.com:8091/meta/devices/types?geocode="+getGeocode()).get( 
+    function(error, json) {
+        if(error) alert(error);
+        else {
+            d3.selectAll(".search-filter").selectAll("*").remove();
+            d3.selectAll(".search-filter").selectAll("button")
+                    .data(JSON.parse(json.response).device_types).enter().append("button")
+                    .attr("class", "search-filter-btn")
+                    .on("click", function(d){
+                        addMarkers(d);
+                    })
+                    .text(function(d) { return d; });
+            
         }
+        console.log("req data: "+getGeocode());
+    });
+}
+
+function getGeocode() {
+    var w = document.getElementsByTagName('body')[0].getBoundingClientRect().width/2;
+    var h = document.getElementsByTagName('body')[0].getBoundingClientRect().height/2;
+    var topCood = projection.invert([0, 0]);
+    var bottomCood = projection.invert([w*2, h*2]);
+    console.log(" ");
+    console.log("cood bbox: "+topCood[1]+","+topCood[0]+","+bottomCood[1]+","+bottomCood[0]);
+    console.log("radius in meters: "+getRadiusofScreen(projection.invert([0,0]), projection.invert([w, 0])));
+    console.log("center coord: "+projection.invert([w,h])[1]+","+projection.invert([w,h])[0]);
+    
+    return projection.invert([w,h])[1]+","+projection.invert([w,h])[0]+","+getRadiusofScreen(projection.invert([0,0]), projection.invert([w, 0]));
+}
+
     </script>
+</body>
+</html>
