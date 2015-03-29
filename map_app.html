@@ -447,19 +447,27 @@ var wsSession;
                                              return true;
                                     })
                                     .attr("x", function(d){
-                                        console.log((d.projected_coords[0]));
+                                        //console.log((d.projected_coords[0]));
                                         return (d.projected_coords[0]-15);
                                     })
                                     .attr("y", function(d){
-                                        console.log((d.projected_coords[1]));
+                                        //console.log((d.projected_coords[1]));
                                         return (d.projected_coords[1]-30);
                                     })
                                     .attr("xlink:href", function(d) {
+                                        
                                         if(doesImageExists(devicetype+".png")) {
                                             return devicetype+".png";
                                         } else {
-                                            return "location.png";
-                                        }
+                                            return "location_pin.png";
+                                        }/*
+                                        doesImageExists(devicetype+".png", function(exists) {
+                                           if(exists) {
+                                               return devicetype+".png";
+                                           } else {
+                                               return "location.png";
+                                           }
+                                        }); */
                                     })
                                     .attr("width", 30)
                                     .attr("height", 30);
@@ -589,7 +597,7 @@ function updateMarkers() {
     var markers_data = svg.selectAll(".location-pin").data();
     markers_data.forEach(function(m_d, i){
         markers_data[i].projected_coords = projection(m_d.attributes.gps);
-        console.log("markers coords: "+markers_data[i].projected_coords);
+        //console.log("markers coords: "+markers_data[i].projected_coords);
     });
     
     svg.selectAll(".location-pin").data(markers_data)
@@ -676,13 +684,17 @@ function filterSearch() {
                     .text(function(d) { return d; })
                     .append("img")
                     .attr("src", function(d) {
-                        return d+".png";
+                        if(doesImageExists(d+".png")) {
+                            return d+".png";
+                        } else {
+                            return "location_pin.png";
+                        }
                     })
                     .attr("height", 20)
                     .attr("width", 20);
             
         }
-        console.log("req data: "+getGeocode());
+        //console.log("req data: "+getGeocode());
     });
 }
 
@@ -691,22 +703,26 @@ function getGeocode() {
     var h = document.getElementsByTagName('body')[0].getBoundingClientRect().height/2;
     var topCood = projection.invert([0, 0]);
     var bottomCood = projection.invert([w*2, h*2]);
+    /*
     console.log(" ");
     console.log("cood bbox: "+topCood[1]+","+topCood[0]+","+bottomCood[1]+","+bottomCood[0]);
     console.log("radius in meters: "+getRadiusofScreen(projection.invert([0,0]), projection.invert([w, 0])));
     console.log("center coord: "+projection.invert([w,h])[1]+","+projection.invert([w,h])[0]);
-    
+    */
     return projection.invert([w,h])[1]+","+projection.invert([w,h])[0]+","+getRadiusofScreen(projection.invert([0,0]), projection.invert([w, 0]));
 }
 
 function doesImageExists(image_url){
-
+    /*
     var http = new XMLHttpRequest();
 
     http.open('HEAD', image_url, false);
     http.send();
-
     return http.status !== 404;
+    //nxt(http.status !== 404); */
+    var img = new Image();
+    img.src = image_url;
+    return img.height !== 0;
 };
 
 //autobahn stuff
@@ -718,7 +734,7 @@ var connection = new autobahn.Connection({
   });
 
 connection.onopen = function(session) {
-  console.log("Websocket Connected")
+  console.log("Websocket Connected");
   wsSession = session;
 };
 
@@ -760,7 +776,7 @@ var wsRegisterDevice = function(marker, marker_id) {
                     }
                 }
             }
-        } catch (err) { alert(err); }
+        } catch (err) { conosle.log(err); }
         
         updateMarkers();
     };
